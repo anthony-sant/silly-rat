@@ -1,1 +1,1 @@
-# silly-rat
+# Silly Rat Game
