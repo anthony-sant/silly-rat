@@ -28,7 +28,7 @@ enemies = []
 player = None
 sound = None
 menu_image = Actor("menu_rat")
-menu_image.x = WIDTH // 2  # centraliza horizontalmente
+menu_image.x = WIDTH // 2 
 CURRENT_MAP = {
     1: map1
 }
@@ -156,7 +156,7 @@ WORM_SPRITES = {
     }
 }
 
-BLOCKED_TILES = list(WALL_ROCK.values()) + [TREE[B]]
+
 
 class SoundManager:
     def __init__(self):
@@ -193,6 +193,10 @@ class SoundManager:
         if self.sound_on:
             sounds.win_sound.play()
 
+    def game_over_sound(self):
+        if self.sound_on:
+            sounds.game_over.play()
+
 class Entity(ABC):
     def __init__(self, x, y, speed):
         self.rect = Rect(x, y, TILE_SIZE, TILE_SIZE)
@@ -205,23 +209,11 @@ class Entity(ABC):
         self.state = "idle"
         self.image = None
         self.step_timer = 0
-        self.hp = MAX_HP
-        self.damage = 25
-        self.attack_cooldown = 60
         self.attack_timer = 0
 
     @abstractmethod
-    def update(self, map_, entity):
+    def update(self, map_, entity=None):
         pass
-
-    def atack(self, entity):
-        if hasattr(entity, "take_damage"):
-            entity.take_damage(self.damage)
-
-    def take_damage(self, amount):
-        self.hp = max(0, self.hp - amount)
-        sound.player_damage_sound()
-        print(f"{self.__class__.__name__} levou {amount} de dano. HP restante: {self.hp}")
 
     def update_sprite(self, sprites):
         self.frame_counter += 1
@@ -229,14 +221,10 @@ class Entity(ABC):
             self.frame_counter = 0
             self.current_frame = (self.current_frame + 1) % len(sprites[self.facing_direction][self.state])
             self.image = sprites[self.facing_direction][self.state][self.current_frame]
-
         
     def draw(self):
         screen.blit(self.image, (self.rect.x, self.rect.y))
 
-
-    def is_dead(self):
-        return self.hp<=0
 
 class Worm(Entity):
     def __init__(self, x, y, speed):
@@ -245,27 +233,27 @@ class Worm(Entity):
         self.direction = random.choice(["up", "down", "left", "right"])
         self.move_cooldown = 80
         self.timer = 0
+        self.damage = 25
+        self.attack_cooldown = 60
 
-    def update(self, map_, entity):
-        self.random_walk(map_, player)
-        self.move(map_)
+    def update(self, map_, entity=None):
+        target = entity if entity is not None else player
+        self.random_walk(map_, target)
         self.update_sprite(WORM_SPRITES)
 
-
-        
+    def atack(self, entity):
+        if hasattr(entity, "take_damage"):
+            entity.take_damage(self.damage)
 
     def update_direction(self):
         current_direction = random.choice(["up", "down", "left", "right"])
         self.direction = current_direction
         if current_direction == "right" or current_direction == "left":
             self.facing_direction = current_direction
-
         self.state = "walk" if self.direction else "idle"
 
     def move(self, map_, target=None):
         new_rect = self.rect.copy()
-
-        # Movimento como antes (igual ao seu código anterior)
         if self.direction == "up":
             new_rect.y -= self.speed
         elif self.direction == "down":
@@ -274,38 +262,24 @@ class Worm(Entity):
             new_rect.x -= self.speed
         elif self.direction == "right":
             new_rect.x += self.speed
-
-        # Mantém dentro dos limites do mesmo jeito que você usava (preserva comportamento)
         new_rect.x = max(0, min(new_rect.x, WIDTH - (1.5 * TILE_SIZE)))
         new_rect.y = max(0, min(new_rect.y, HEIGHT - (1.5 * TILE_SIZE)))
-
-        # Tile em que o "pé" está (igual ao seu original)
         tile_x = new_rect.centerx // TILE_SIZE
         tile_y = new_rect.bottom // TILE_SIZE
-
-        # Proteção contra IndexError — se sair dos limites, não move
         if not (0 <= tile_y < len(map_) and 0 <= tile_x < len(map_[0])):
             return
-
-        # Pare quando houver parede (igual ao seu original)
         if map_[tile_y][tile_x] not in FLOOR.values():
             self.update_direction()
-            return  # parede, não move
-
-        # Ataque por colisão — mantém comportamento de "não atravessar o player"
+            return
         if target and new_rect.colliderect(target.rect):
-            # se quiser o comportamento antigo (parar ao colidir), mantemos o return
             if self.attack_timer <= 0:
                 self.atack(target)
                 self.attack_timer = self.attack_cooldown
-            return  # colidiu com o player, não anda (igual ao seu original)
-
-        # finalmente aplica a nova posição
+            return
         self.rect = new_rect
-
-        # decrementa cooldown (se houver)
         if self.attack_timer > 0:
             self.attack_timer -= 1
+
     def random_walk(self, map_, player):
         if self.timer > 0:
             self.timer -= 1
@@ -335,8 +309,6 @@ class Worm(Entity):
             self.facing_direction = "left"
             return "left"
         return direction
-
-
     
 
 class Player(Entity):
@@ -345,16 +317,16 @@ class Player(Entity):
         self.image = PLAYER_SPRITES[self.facing_direction][self.state][self.current_frame]
         self.speed = TILE_SIZE / 10
         self.key_counter = 0
+        self.hp = MAX_HP
 
-    def update(self, map_, entity):
+    def update(self, map_, entity=None):
         global game_state
         self.update_direction()
         self.move(map_)
         self.update_sprite(PLAYER_SPRITES)
         if self.is_dead():
+            sound.game_over_sound()
             game_state = "game_over"
-
-    
 
     def update_direction(self):
         if keyboard.w:
@@ -369,7 +341,6 @@ class Player(Entity):
             self.facing_direction = self.direction
         else:
             self.direction = None
-
         self.state = "walk" if self.direction else "idle"
 
     def move(self, map_):
@@ -383,46 +354,40 @@ class Player(Entity):
             new_rect.x -= self.speed
         elif self.direction == "right":
             new_rect.x += self.speed
-
         new_rect.x = max(0, min(new_rect.x, WIDTH - (1.5* TILE_SIZE)))
         new_rect.y = max(0, min(new_rect.y, HEIGHT - (1.5* TILE_SIZE)))
-
-
         tile_x = new_rect.centerx// TILE_SIZE
         tile_y = new_rect.bottom // TILE_SIZE
-
         if not (0 <= tile_y < len(map_) and 0 <= tile_x < len(map_[0])):
             return
-
         current_tile = map_[tile_y][tile_x]
         if current_tile not in FLOOR.values():
-            
-            print(f"Tile atual: '{current_tile}'")  # debug
             if current_tile in "KEY":
                 self.pick_key()
                 map_[tile_y][tile_x] = FLOOR[GRASS]
             elif current_tile in "GRASS_WIN":
-                print("Detectou GRASS_WIN")  # debug
                 if door_open:
-                    print("You Win!")
                     sound.win_sound()
                     game_state = "win_menu"
             else:
-                return  # parede, não move
-
+                return
    
         for enemy in enemies:
             if new_rect.colliderect(enemy.rect):
                 return 
-        
-        
         self.rect = new_rect
-
+        
+    def is_dead(self):
+        return self.hp <= 0
+        
     def pick_key(self):
         sound.pick_a_key_sound()
         self.key_counter += 1
 
-    
+    def take_damage(self, amount):
+        self.hp = max(0, self.hp - amount)
+        sound.player_damage_sound()
+        print(f"{self.__class__.__name__} levou {amount} de dano. HP restante: {self.hp}")
     
 
 def get_random_floor_position(map_):
@@ -467,8 +432,6 @@ def draw_menu():
         fontname=FONT_MENU,
     )
 
-def is_near_door(pos_x, pos_y, door_x, door_y, threshold=0.5):
-    return abs(pos_x - door_x) <= threshold and abs(pos_y - door_y) <= threshold
 
 def build_wall(map_):
     for y in range(4):
@@ -488,7 +451,6 @@ def generate_floor(map_, floor_key):
             map_[y][x] = FLOOR[floor_key]
 
                 
-
 def generate_tree(map_):
     placed = False
     while not placed:
@@ -500,6 +462,7 @@ def generate_tree(map_):
             map_[wood_position][tree_x] = "WOOD"
             placed = True
 
+
 def generate_key(map_):
     placed = False
     while not placed:
@@ -508,6 +471,7 @@ def generate_key(map_):
         if map_[key_y][key_x] in FLOOR.values():
             map_[key_y][key_x] = "KEY"
             placed = True
+
 
 def generate_map1():
     global door_position, map1
@@ -534,19 +498,18 @@ def generate_map1():
     return map1
 
 
-
-
-
 def draw_floor(floor_key):
     for y, line in enumerate(CURRENT_MAP[current_level]):
         for x, _ in enumerate(line):
             screen.blit(FLOOR[floor_key], (x * TILE_SIZE, y * TILE_SIZE))
+
 
 def draw_wall():
     for y, line in enumerate(CURRENT_MAP[current_level]):
         for x, name in enumerate(line):
             if name in WALL_ROCK:
                 screen.blit(WALL_ROCK[name], (x*TILE_SIZE, y*TILE_SIZE))
+
 
 def draw_door():
     if door_open:
@@ -561,6 +524,7 @@ def draw_door():
 
         screen.blit(tile_name, (x * TILE_SIZE, y * TILE_SIZE))
 
+
 def draw_trees():
     for y, line in enumerate(CURRENT_MAP[current_level]):
         for x, name in enumerate(line):
@@ -571,6 +535,7 @@ def draw_trees():
                     yt = y + offset[1]
 
                     screen.blit(tile_name, (xt * TILE_SIZE, yt * TILE_SIZE))
+
 
 def draw_key():
     for y, line in enumerate(CURRENT_MAP[current_level]):
@@ -618,6 +583,22 @@ def draw_game_over():
         owidth=1, ocolor="black"
     )
 
+
+def draw_enemies():
+    for enemy in enemies:
+        enemy.draw()
+
+
+def draw_map1():
+    draw_floor(GRASS)
+    draw_wall()
+    draw_door()
+    draw_enemies()
+    player.draw()
+    draw_trees()
+    draw_key()
+
+
 def init():
     global player, map1, CURRENT_MAP, current_level, sound, enemies, door_open
     door_open = False
@@ -637,29 +618,22 @@ def update_game():
         return
     player.update(CURRENT_MAP[current_level], player)
     sound.play_walk_sound(player)
-    
     for enemy in enemies:
         enemy.update(CURRENT_MAP[current_level], player)
-        if enemy.is_dead():
-            enemies.remove(enemy)
-
     if player.key_counter >= 3 and not door_open:
         sound.sound_door_open()
         door_open = True
     
 
 
+
 def on_key_down(key):
     global selected_option, game_state, sound_on, sound
-
     if game_state == "menu":
-        # navegação ↑ ↓
         if key == keys.UP:
             selected_option = (selected_option - 1) % len(options)
         elif key == keys.DOWN:
             selected_option = (selected_option + 1) % len(options)
-
-        # confirmação
         elif key == keys.RETURN:
             option = options[selected_option]
             if option == "Start Game":
@@ -681,10 +655,12 @@ def on_key_down(key):
         if key == keys.RETURN:
             game_state = "menu"
 
+
+
+
 def update():
     if game_state == "playing":
         update_game()
-
     elif game_state == "win_menu" or game_state == "game_over":
         if sound:
             music.stop()
@@ -698,18 +674,9 @@ def draw():
         draw_menu()
     elif game_state == "playing":
         if current_level == 1:
-            
-            draw_floor(GRASS)
-            draw_wall()
-            draw_door()
-            for enemy in enemies:
-                enemy.draw()
-            player.draw()
-            draw_trees()
-            draw_key()
+            draw_map1()
     elif game_state == "win_menu":
         draw_win_menu()
-
     elif game_state == "game_over":
         draw_game_over()
 pgzrun.go()
