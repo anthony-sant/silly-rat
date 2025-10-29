@@ -28,7 +28,8 @@ enemies = []
 player = None
 sound = None
 menu_image = Actor("menu_rat")
-menu_image.x = WIDTH // 2 
+menu_image.x = WIDTH // 2
+hovered_option = None
 CURRENT_MAP = {
     1: map1
 }
@@ -413,8 +414,13 @@ def draw_menu():
         owidth=1, ocolor="black"
     )
 
+    create_button_rects()
+
     for i, option in enumerate(options):
-        color = "yellow" if i == selected_option else "white"
+        if hovered_option is not None:
+            color = "yellow" if i == hovered_option else "white"
+        else:
+            color = "yellow" if i == selected_option else "white"
         screen.draw.text(
             option,
             center=(WIDTH // 2, HEIGHT //2 + 20+ i * 35),
@@ -425,12 +431,23 @@ def draw_menu():
         )
 
     screen.draw.text(
-        "Use Up/Down to navigate and Enter to select",
+        "Collect all the keys to open the door.",
         center=(WIDTH // 2, HEIGHT - 40),
         fontsize=10,
         color="white",
         fontname=FONT_MENU,
+        align="center"
     )
+
+    screen.draw.text(
+        "Use W, A, S, D to move.",
+        center=(WIDTH // 2, HEIGHT - 25),
+        fontsize=10,
+        color="white",
+        fontname=FONT_MENU,
+        align="center"
+    )
+
 
 
 def build_wall(map_):
@@ -612,6 +629,27 @@ def init():
     sound.play_music()
     
 
+button_rects = []
+def create_button_rects():
+    button_rects.clear()
+    for i, option in enumerate(options):
+        rect = Rect(
+            (WIDTH // 2 - 100, HEIGHT // 2 + 5 + i * 35 - 10),
+            (200, 30)
+        )
+        button_rects.append(rect)
+
+
+def on_mouse_move(pos):
+    global hovered_option
+    hovered_option = None
+    if game_state == "menu":
+        for i, rect in enumerate(button_rects):
+            if rect.collidepoint(pos):
+                hovered_option = i
+                return
+
+
 def update_game():
     global door_open
     if not player or not CURRENT_MAP or current_level not in CURRENT_MAP:
@@ -625,6 +663,28 @@ def update_game():
         door_open = True
     
 
+def on_mouse_down(pos):
+    global game_state, selected_option, sound_on, sound
+
+    if game_state == "menu":
+        for i, rect in enumerate(button_rects):
+            if rect.collidepoint(pos):
+                option = options[i]
+                if option == "Start Game":
+                    init()
+                    game_state = "playing"
+                elif option == "Toggle Sound":
+                    if sound is None:
+                        sound = SoundManager()
+                        sound.sound_on = False
+                        music.stop()
+                    else:
+                        sound.sound_on = not sound.sound_on
+                        if not sound.sound_on:
+                            music.stop()
+                    print("Sound:", "ON" if sound.sound_on else "OFF")
+                elif option == "Exit":
+                    exit()
 
 
 def on_key_down(key):
@@ -636,6 +696,7 @@ def on_key_down(key):
             selected_option = (selected_option + 1) % len(options)
         elif key == keys.RETURN:
             option = options[selected_option]
+            
             if option == "Start Game":
                 init()
                 game_state = "playing"
